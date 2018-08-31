@@ -1,0 +1,13 @@
+# r0 -> n
+# r1 -> return addr
+# r2 -> sq(n)
+
+sq
+	r0 -> r0 * 2
+	r2 -> 0
+loop
+	r15 -> r1 ? !(r0 > 0)
+	r2 -> r2 + r0
+	r2 -> r2 + 1
+	r0 -> r0 - 2
+	r15 -> loop

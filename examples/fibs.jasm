@@ -1,0 +1,13 @@
+# r0 -> n
+# r1 -> return addr
+# r2 -> fibs(n+1)
+# r3 -> fibs(n)
+
+fibs
+	r15 -> 1
+	r3 -> 0
+loop
+	r15 -> r1 ? !(r0 > 0)
+	r0, r1 -> r1, r0
+	r1 -> r1 + r0
+	r15 -> loop

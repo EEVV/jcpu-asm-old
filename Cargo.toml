@@ -1,0 +1,6 @@
+[package]
+name = "jcpu-asm"
+version = "0.1.0"
+authors = ["EEVV <0eevv0@gmail.com>"]
+
+[dependencies]

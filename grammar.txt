@@ -1,0 +1,20 @@
+label ::= IDEN
+
+atom ::= (NOT | SUB | DIV) atom
+       | PAREN_L oper PAREN_R
+       | NUM
+       | IDEN
+       | REG
+
+op ::= NOT? (OR | AND | XOR | ADD | SUB | MUL | DIV | LT | GT | EQ)
+
+oper ::= oper op atom
+      | atom
+
+opers ::= oper (',' oper)*
+
+to ::= opers TO opers (QUESTION oper)?
+
+program ::= ((TAB to | label)? LINE)*
+
+goal ::= program END
