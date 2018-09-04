@@ -5,7 +5,8 @@ use loc::Loc;
 pub enum TokenId {
 	Iden(String),
 	Num(isize),
-	Reg(isize),
+	Reg(u8),
+	Empty,
 
 	Not,
 	Or,

@@ -1,7 +1,7 @@
 use token::{TokenId, Token};
 use lexer::Lexer;
-use error::{ErrorId, Error};
-use node::Node;
+use error::{ErrorId, Error, gen_error};
+use node::{Program, Node};
 
 
 struct Parser {
@@ -12,13 +12,6 @@ struct Parser {
 impl Parser {
 	fn advance(&mut self) {
 		self.token_result = self.lexer.token();
-	}
-
-	fn gen_error<T>(&mut self, error_id: ErrorId, token: Token) -> Result<T, Error> {
-		Err(Error {
-			id: error_id,
-			loc: token.loc.clone(),
-		})
 	}
 
 	fn parse_atom(&mut self) -> Result<Node, Error> {
@@ -45,6 +38,11 @@ impl Parser {
 					self.advance();
 
 					Ok(node)
+				},
+				TokenId::Empty => {
+					self.advance();
+
+					Ok(Node::Empty)
 				},
 				TokenId::Not => {
 					self.advance();
@@ -83,22 +81,40 @@ impl Parser {
 
 					match node_result {
 						Err(_) => node_result,
-						Ok(_) => {
-							match self.token_result.clone() {
-								Err(err) => Err(err),
-								Ok(token) => match token.id {
-									TokenId::ParenR => {
-										self.advance();
+						Ok(_) => match self.token_result.clone() {
+							Err(err) => Err(err),
+							Ok(token) => match token.id {
+								TokenId::ParenR => {
+									self.advance();
 
-										node_result
-									},
-									_ => self.gen_error(ErrorId::ExpectedParen, token.clone())
-								}
+									node_result
+								},
+								_ => gen_error(ErrorId::ExpectedParen, token.clone())
 							}
 						}
 					}
 				},
-				_ => self.gen_error(ErrorId::ExpectedAtom, token.clone())
+				TokenId::SquareL => {
+					self.advance();
+
+					let node_result = self.parse_opers();
+
+					match node_result {
+						Err(_) => node_result,
+						Ok(node) => match self.token_result.clone() {
+							Err(err) => Err(err),
+							Ok(token) => match token.id {
+								TokenId::SquareR => {
+									self.advance();
+
+									Ok(Node::Mem(Box::new(node)))
+								},
+								_ => gen_error(ErrorId::ExpectedSquare, token.clone())
+							}
+						}
+					}
+				},
+				_ => gen_error(ErrorId::ExpectedAtom, token.clone())
 			}
 		}
 	}
@@ -190,7 +206,7 @@ impl Parser {
 							let right_result = self.parse_atom();
 							match right_result {
 								Err(_) => return right_result,
-								Ok(right) => node = Node::Gt(Box::new(node), Box::new(right))
+								Ok(right) => node = Node::Lt(Box::new(right), Box::new(node))
 							}
 						},
 						TokenId::Lt => {
@@ -278,7 +294,7 @@ impl Parser {
 										let cond_result = self.parse_oper();
 										match cond_result {
 											Err(err) => Err(err),
-											Ok(cond) => Ok(Node::Cond(Box::new(left), Box::new(right), Box::new(cond)))
+											Ok(cond) => Ok(Node::Cond(Box::new(Node::To(Box::new(left), Box::new(right))), Box::new(cond)))
 										}
 									},
 									_ => Ok(Node::To(Box::new(left), Box::new(right)))
@@ -292,7 +308,7 @@ impl Parser {
 		}
 	}
 
-	fn parse(&mut self) -> Result<Vec<Node>, Error> {
+	fn parse(&mut self) -> Result<Program, Error> {
 		let mut nodes = Vec::new();
 
 		loop {
@@ -316,7 +332,7 @@ impl Parser {
 							Ok(token) => match token.id {
 								TokenId::Line => self.advance(),
 								TokenId::Eof => break,
-								_ => return self.gen_error(ErrorId::ExpectedLine, token)
+								_ => return gen_error(ErrorId::ExpectedLine, token)
 							}
 						}
 					},
@@ -330,7 +346,7 @@ impl Parser {
 							Err(err) => return Err(err.clone()),
 							Ok(token) => match token.id {
 								TokenId::Line | TokenId::Eof => (),
-								_ => return self.gen_error(ErrorId::ExpectedLine, token)
+								_ => return gen_error(ErrorId::ExpectedLine, token)
 							}
 						}
 
@@ -340,16 +356,18 @@ impl Parser {
 						self.advance();
 					},
 					TokenId::Eof => break,
-					_ => return self.gen_error(ErrorId::ExpectedProgram, token.clone())
+					_ => return gen_error(ErrorId::ExpectedProgram, token.clone())
 				}
 			}
 		}
 
-		Ok(nodes)
+		Ok(Program {
+			nodes: nodes
+		})
 	}
 }
 
-pub fn parse(source: String) -> Result<Vec<Node>, Error> {
+pub fn parse(source: String) -> Result<Program, Error> {
 	let mut lexer = Lexer::new(source);
 	let token_result = lexer.token();
 

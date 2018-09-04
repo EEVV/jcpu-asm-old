@@ -135,12 +135,12 @@ impl Lexer {
 								'0' ... '9' => {
 									self.advance();
 
-									let num = self.get_num(chr);
+									let num: isize = self.get_num(chr);
 
 									if num > 15 {
 										self.gen_error(ErrorId::InvalidReg, 1)
 									} else {
-										self.gen_token(TokenId::Reg(num))
+										self.gen_token(TokenId::Reg(num as u8))
 									}
 								},
 								_ => {
@@ -165,6 +165,11 @@ impl Lexer {
 					let num = self.get_num(chr);
 					self.gen_token(TokenId::Num(num))
 				},
+				'_' => {
+					self.advance();
+
+					self.gen_token(TokenId::Empty)
+				}
 				'!' => {
 					self.advance();
 

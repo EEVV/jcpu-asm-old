@@ -1,15 +1,22 @@
+#![feature(box_patterns)]
+
 mod loc;
 mod token;
 mod error;
 mod lexer;
 mod node;
 mod parser;
+mod cpu;
 
 use parser::parse;
 
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
+
+use cpu::{Opcode, Inst};
+
+use node::Node;
 
 
 fn main() {
@@ -25,7 +32,25 @@ fn main() {
 					match file.read_to_string(&mut source) {
 						Err(_) => println!("failed to read file"),
 						Ok(_) => {
-							println!("{:?}", parse(source));
+							let program_result = parse(source);
+
+							println!("{:?}", program_result);
+
+							match program_result {
+								Err(_) => (),
+								Ok(program) => {
+									let program_gen_result = program.gen();
+
+									println!("{:?}", program_gen_result);
+
+									match program_gen_result {
+										Err(_) => (),
+										Ok(raw_insts) => for inst in raw_insts {
+											println!("{:032b}", inst);
+										}
+									}
+								}
+							}
 						}
 					}
 				}

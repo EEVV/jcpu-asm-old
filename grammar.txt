@@ -2,6 +2,7 @@ label ::= IDEN
 
 atom ::= (NOT | SUB | DIV) atom
        | PAREN_L oper PAREN_R
+       | SQUARE_L oper SQUARE_R
        | NUM
        | IDEN
        | REG
