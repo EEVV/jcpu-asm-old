@@ -1,32 +1,51 @@
+use std::collections::HashMap;
+use std::mem;
+
 use cpu::{Opcode, Inst};
 use error::{ErrorId, Error, gen_error};
 
 
 #[derive(Debug)]
 pub struct Program {
-	pub nodes: Vec<Node>
+	pub nodes: Vec<Node>,
+	// binary output
+	pub binary: Vec<u32>,
+	// list of labels
+	pub labels: HashMap<String, i32>,
+	// labels to be filled
+	pub queue: HashMap<String, Vec<usize>>,
+	// current address
+	pub addr: usize
 }
 
 impl Program {
-	pub fn gen(self) -> Result<Vec<u32>, ErrorId> {
-		let mut raw_insts = Vec::new();
-		let mut address = 0;
+	pub fn gen(mut self) -> Option<Vec<u32>> {
+		let mut nodes = vec![];
+		mem::swap(&mut nodes, &mut self.nodes);
 
-		for node in self.nodes {
-			let raw_insts0_result = node.gen(&mut address);
-			match raw_insts0_result {
-				Err(_) => return raw_insts0_result,
-				Ok(mut raw_insts0) => raw_insts.append(&mut raw_insts0)
+		for node in nodes {
+			if node.gen(&mut self) == false {
+				return None
 			}
 		}
 
-		Ok(raw_insts)
+		Some(self.binary)
+	}
+
+	fn get_iden(&mut self, iden: String, offset: usize) -> u32 {
+		match self.labels.get(&iden) {
+			None => {
+				self.queue.entry(iden).or_insert(vec![]).push(self.addr + offset);
+				0
+			},
+			Some(num) => *num as u32
+		}
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Node {
-	Num(isize),
+	Num(i32),
 	Iden(String),
 	Reg(u8),
 	Label(String),
@@ -42,11 +61,17 @@ pub enum Node {
 	Xor(Box<Node>, Box<Node>),
 	Add(Box<Node>, Box<Node>),
 	Sub(Box<Node>, Box<Node>),
+	Sl(Box<Node>, Box<Node>),
+	Sr(Box<Node>, Box<Node>),
 	Mul(Box<Node>, Box<Node>),
 	Div(Box<Node>, Box<Node>),
 
 	Eql(Box<Node>, Box<Node>),
 	Lt(Box<Node>, Box<Node>),
+
+	Mem8(Box<Node>),
+	Mem16(Box<Node>),
+	Mem32(Box<Node>),
 
 	Opers(Vec<Node>),
 
@@ -54,180 +79,449 @@ pub enum Node {
 	Cond(Box<Node>, Box<Node>),
 }
 
-
 impl Node {
-	fn gen_src0(&self, mut inst: Inst) -> Result<Vec<u32>, ErrorId> {
+	fn gen_src0(self, program: &mut Program, inst: &mut Inst) -> bool {
 		match self {
 			Node::Num(num) => {
 				inst.i0 = true;
-				inst.imm0 = *num as u32;
-
-				Ok(inst.gen())
+				inst.imm0 = num as u32;
 			},
 			Node::Reg(reg) => {
-				inst.src0 = *reg;
-
-				Ok(inst.gen())
-			}
-			_ => Err(ErrorId::InvalidInstruction)
+				inst.src0 = reg;
+			},
+			Node::Iden(iden) => {
+				inst.i0 = true;
+				inst.imm0 = program.get_iden(iden, 1);
+			},
+			_ => return false
 		}
+
+		true
 	}
 
-	fn gen_both(&self, left: &Node, mut inst: Inst) -> Result<Vec<u32>, ErrorId> {
+	fn gen_src1(self, program: &mut Program, inst: &mut Inst) -> bool {
 		match self {
 			Node::Num(num) => {
 				inst.i1 = true;
-				inst.imm1 = *num as u32;
-
-				left.gen_src0(inst)
+				inst.imm1 = num as u32;
 			},
 			Node::Reg(reg) => {
-				inst.src1 = *reg;
-
-				left.gen_src0(inst)
-			}
-			_ => Err(ErrorId::InvalidInstruction)
-		}
-	}
-
-	fn gen_inst(&self, mut inst: Inst) -> Result<Vec<u32>, ErrorId> {
-		match self {
-			Node::To(box left, box right) => match left {
-				Node::Reg(reg) => {
-					inst.dest0 = *reg;
-					inst.w0 = true;
-
-					match right {
-						Node::Not(box node) => {
-							inst.opcode = Opcode::Not;
-
-							node.gen_src0(inst)
-						},
-						Node::Neg(box node) => {
-							inst.opcode = Opcode::Neg;
-
-							node.gen_src0(inst)
-						},
-						Node::Rep(box node) => {
-							inst.opcode = Opcode::Rep;
-
-							node.gen_src0(inst)
-						},
-						Node::Mem(box node) => {
-							inst.opcode = Opcode::Lod32;
-
-							node.gen_src0(inst)
-						},
-						Node::Or(box left0, box right0) => {
-							inst.opcode = Opcode::Or;
-
-							right0.gen_both(left0, inst)
-						},
-						Node::And(box left0, box right0) => {
-							inst.opcode = Opcode::And;
-
-							right0.gen_both(left0, inst)
-						},
-						Node::Xor(box left0, box right0) => {
-							inst.opcode = Opcode::Xor;
-
-							right0.gen_both(left0, inst)
-						},
-						Node::Add(box left0, box right0) => {
-							inst.opcode = Opcode::Add;
-
-							right0.gen_both(left0, inst)
-						},
-						Node::Sub(box left0, box right0) => {
-							inst.opcode = Opcode::Sub;
-
-							right0.gen_both(left0, inst)
-						},
-						Node::Mul(box left0, box right0) => {
-							inst.opcode = Opcode::Mul;
-
-							right0.gen_both(left0, inst)
-						},
-						Node::Div(box left0, box right0) => {
-							inst.opcode = Opcode::Div;
-
-							right0.gen_both(left0, inst)
-						},
-						/*
-						TODO:
-
-						Node::Eql(box left0, box right0) => {
-							inst.opcode = Opcode::Eql;
-
-							right0.gen_both(left0, inst)
-						},
-						*/
-						Node::Lt(box left0, box right0) => {
-							inst.opcode = Opcode::Lt;
-
-							right0.gen_both(left0, inst)
-						},
-						_ => right.gen_src0(inst)
-					}
-				},
-				Node::Mem(box mem) => {
-					inst.opcode = Opcode::Sto32;
-
-					match mem {
-						Node::Num(num) => {
-							inst.i0 = true;
-							inst.imm0 = *num as u32;
-						},
-						Node::Reg(reg) => {
-							inst.dest0 = *reg;
-							inst.w0 = true;
-						},
-						_ => ()
-					}
-
-					right.gen_src0(inst)
-				},
-				_ => Err(ErrorId::InvalidInstruction)
+				inst.src1 = reg;
 			},
-			_ => Err(ErrorId::InvalidInstruction)
+			Node::Iden(iden) => {
+				inst.i1 = true;
+				inst.imm1 = program.get_iden(iden, 1);
+			},
+			_ => return false
 		}
+
+		true
 	}
 
-	fn gen_lt(&self, mut inst: Inst, cond_to: Node) -> Result<Vec<u32>, ErrorId> {
+	fn gen_uncond(self, program: &mut Program, inst: &mut Inst) -> bool {
 		match self {
-			Node::Lt(box lt_left, box lt_right) => match lt_left {
-				Node::Num(0) => match lt_right {
+			// gen instructions
+			Node::To(box left, box right) => {
+				match left {
 					Node::Reg(reg) => {
-						inst.cond = *reg;
+						inst.w0 = true;
+						inst.dest0 = reg;
 
-						cond_to.gen_inst(inst)
+						// TODO:
+						// elevate right side to make it easier
+						// Node(x) -> x
+						// then after that handle src0, src1, dest0, dest1
+						match right {
+							Node::Num(num) => {
+								inst.i0 = true;
+								inst.imm0 = num as u32;
+							},
+							Node::Reg(reg) => {
+								inst.src0 = reg;
+							},
+							Node::Iden(iden) => {
+								inst.i0 = true;
+								inst.imm0 = program.get_iden(iden, 1);
+							},
+							Node::Not(box node) => match node {
+								// 1 op
+								Node::Num(num) => {
+									inst.opcode = Opcode::Not;
+									inst.i0 = true;
+									inst.imm0 = num as u32;
+								},
+								Node::Reg(reg) => {
+									inst.opcode = Opcode::Not;
+									inst.src0 = reg;
+								},
+								Node::Iden(iden) => {
+									inst.opcode = Opcode::Not;
+									inst.i0 = true;
+									inst.imm0 = program.get_iden(iden, 1);
+								},
+								// 2 op, optimization
+								Node::Or(box left, box right) => {
+									inst.opcode = Opcode::Nor;
+
+									if !left.gen_src0(program, inst) {
+										return false
+									}
+
+									if !right.gen_src1(program, inst) {
+										return false
+									}
+								},
+								Node::And(box left, box right) => {
+									inst.opcode = Opcode::Nand;
+
+									if !left.gen_src0(program, inst) {
+										return false
+									}
+
+									if !right.gen_src1(program, inst) {
+										return false
+									}
+								},
+								Node::Xor(box left, box right) => {
+									inst.opcode = Opcode::Xnor;
+
+									if !left.gen_src0(program, inst) {
+										return false
+									}
+
+									if !right.gen_src1(program, inst) {
+										return false
+									}
+								},
+								_ => return false
+							},
+							Node::Neg(box node) => {
+								inst.opcode = Opcode::Neg;
+
+								if !node.gen_src0(program, inst) {
+									return false
+								}
+							},
+							Node::Rep(box node) => {
+								inst.opcode = Opcode::Rep;
+
+								if !node.gen_src0(program, inst) {
+									return false
+								}
+							},
+							Node::Or(box left, box right) => {
+								inst.opcode = Opcode::Or;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::And(box left, box right) => {
+								inst.opcode = Opcode::And;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Xor(box left, box right) => {
+								inst.opcode = Opcode::Xor;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Add(box left, box right) => {
+								inst.opcode = Opcode::Add;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Sub(box left, box right) => {
+								inst.opcode = Opcode::Sub;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Lt(box left, box right) => {
+								inst.opcode = Opcode::Lt;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Sl(box left, box right) => {
+								inst.opcode = Opcode::Sl;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Sr(box left, box right) => {
+								inst.opcode = Opcode::Sr;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Mul(box left, box right) => {
+								inst.opcode = Opcode::Mul;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Div(box left, box right) => {
+								inst.opcode = Opcode::Div;
+
+								if !left.gen_src0(program, inst) {
+									return false
+								}
+
+								if !right.gen_src1(program, inst) {
+									return false
+								}
+							},
+							Node::Mem8(box node) => {
+								inst.opcode = Opcode::Lod8;
+
+								match node {
+									Node::Num(num) => {
+										inst.i0 = true;
+										inst.imm0 = num as u32;
+									},
+									Node::Reg(reg) => {
+										inst.src0 = reg;
+									},
+									_ => return false
+								}
+							},
+							Node::Mem16(box node) => {
+								inst.opcode = Opcode::Lod16;
+
+								match node {
+									Node::Num(num) => {
+										inst.i0 = true;
+										inst.imm0 = num as u32;
+									},
+									Node::Reg(reg) => {
+										inst.src0 = reg;
+									},
+									_ => return false
+								}
+							},
+							Node::Mem32(box node) => {
+								inst.opcode = Opcode::Lod32;
+
+								match node {
+									Node::Num(num) => {
+										inst.i0 = true;
+										inst.imm0 = num as u32;
+									},
+									Node::Reg(reg) => {
+										inst.src0 = reg;
+									},
+									_ => return false
+								}
+							},
+							_ => return false
+						}
 					},
-					_ => Err(ErrorId::InvalidInstruction)
-				},
-				_ => Err(ErrorId::InvalidInstruction)
-			},
-			_ => Err(ErrorId::InvalidInstruction)
-		}
-	}
+					Node::Mem8(box node) => {
+						inst.opcode = Opcode::Sto8;
 
-	fn gen(self, address: &mut usize) -> Result<Vec<u32>, ErrorId> {
-		match self {
-			Node::To(_, _) => self.gen_inst(Inst::new()),
-			Node::Cond(box cond_to, box cond) => {
-				let mut inst = Inst::new();
-				inst.ce = true;
+						match node {
+							Node::Num(num) => {
+								inst.i0 = true;
+								inst.imm0 = num as u32;
+							},
+							Node::Reg(reg) => {
+								inst.src0 = reg;
+							},
+							_ => return false
+						}
 
-				match cond {
-					Node::Not(node) => {
-						inst.ci = true;
-
-						node.gen_lt(inst, cond_to)
+						match right {
+							Node::Num(num) => {
+								inst.i1 = true;
+								inst.imm1 = num as u32;
+							},
+							Node::Reg(reg) => {
+								inst.src1 = reg;
+							},
+							_ => return false
+						}
 					},
-					Node::Lt(_, _) => cond.gen_lt(inst, cond_to),
-					_ => Err(ErrorId::InvalidInstruction)
+					Node::Mem16(box node) => {
+						inst.opcode = Opcode::Sto16;
+
+						match node {
+							Node::Num(num) => {
+								inst.i0 = true;
+								inst.imm0 = num as u32;
+							},
+							Node::Reg(reg) => {
+								inst.src0 = reg;
+							},
+							_ => return false
+						}
+
+						match right {
+							Node::Num(num) => {
+								inst.i1 = true;
+								inst.imm1 = num as u32;
+							},
+							Node::Reg(reg) => {
+								inst.src1 = reg;
+							},
+							_ => return false
+						}
+					},
+					Node::Mem32(box node) => {
+						inst.opcode = Opcode::Sto32;
+
+						match node {
+							Node::Num(num) => {
+								inst.i0 = true;
+								inst.imm0 = num as u32;
+							},
+							Node::Reg(reg) => {
+								inst.src0 = reg;
+							},
+							_ => return false
+						}
+
+						match right {
+							Node::Num(num) => {
+								inst.i1 = true;
+								inst.imm1 = num as u32;
+							},
+							Node::Reg(reg) => {
+								inst.src1 = reg;
+							},
+							_ => return false
+						}
+					},
+					_ => return false
 				}
 			},
-			_ => Err(ErrorId::InvalidNode)
+			_ => return false
 		}
+
+		true
+	}
+
+	fn gen(self, program: &mut Program) -> bool {
+		let mut inst = Inst::new();
+
+		match self {
+			// gen direct data
+			Node::Num(num) => {
+				program.binary.push(num as u32);
+				program.addr += 1;
+			},
+			Node::Iden(iden) => {
+				let iden_u32 = program.get_iden(iden, 0);
+				program.binary.push(iden_u32);
+
+				program.addr += 1;
+			},
+			Node::Label(label) => {
+				match program.queue.remove(&label) {
+					None => (),
+					Some(addrs) => {
+						for addr in addrs {
+							program.binary[addr] = program.addr as u32
+						}
+					}
+				}
+
+				program.labels.insert(label, program.addr as i32);
+			},
+			// negative numbers
+			Node::Neg(box node) => match node {
+				Node::Num(num) => {
+					program.binary.push((-num) as u32);
+					program.addr += 1;
+				},
+				_ => return false
+			},
+
+			Node::Cond(box node, box cond) => {
+				match cond {
+					Node::Not(box node) => match node {
+						Node::Eql(box left, box right) => match left {
+							Node::Num(0) => match right {
+								Node::Reg(reg) => {
+									inst.ce = true;
+									inst.cond = reg;
+								},
+								_ => return false
+							},
+							Node::Reg(reg) => match right {
+								Node::Num(0) => {
+									inst.ce = true;
+									inst.cond = reg;
+								},
+								_ => return false
+							}
+							_ => return false
+						},
+						_ => return false
+					},
+					_ => return false
+				}
+
+				node.gen_uncond(program, &mut inst);
+			},
+			_ => {
+				if !self.gen_uncond(program, &mut inst) {
+					return false
+				}
+			}
+		}
+
+		let mut inst_raw = inst.gen();
+		program.addr += inst_raw.len();
+		program.binary.append(&mut inst_raw);
+
+		true
 	}
 }

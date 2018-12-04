@@ -8,12 +8,18 @@ pub enum TokenId {
 	Reg(u8),
 	Empty,
 
+	Mem8,
+	Mem16,
+	Mem32,
+
 	Not,
 	Or,
 	And,
 	Xor,
 	Add,
 	Sub,
+	Sl,
+	Sr,
 	Mul,
 	Div,
 	Eql,

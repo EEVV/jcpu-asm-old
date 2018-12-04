@@ -148,7 +148,12 @@ impl Lexer {
 
 									let iden = self.get_iden(chr);
 
-									self.gen_token(TokenId::Iden(iden))
+									match iden.as_ref() {
+										"m8" => self.gen_token(TokenId::Mem8),
+										"m16" => self.gen_token(TokenId::Mem16),
+										"m32" => self.gen_token(TokenId::Mem32),
+										_ => self.gen_token(TokenId::Iden(iden))
+									}
 								}		
 							}
 						}
@@ -156,7 +161,13 @@ impl Lexer {
 						self.advance();
 
 						let iden = self.get_iden(chr);
-						self.gen_token(TokenId::Iden(iden))
+
+						match iden.as_ref() {
+							"m8" => self.gen_token(TokenId::Mem8),
+							"m16" => self.gen_token(TokenId::Mem16),
+							"m32" => self.gen_token(TokenId::Mem32),
+							_ => self.gen_token(TokenId::Iden(iden))
+						}
 					}
 				},
 				'0' ... '9' => {
@@ -232,12 +243,30 @@ impl Lexer {
 				'<' => {
 					self.advance();
 
-					self.gen_token(TokenId::Lt)
+					match self.chr_maybe {
+						None => self.gen_token(TokenId::Lt),
+						Some(chr) => if chr == '<' {
+							self.advance();
+
+							self.gen_token(TokenId::Sl)
+						} else {
+							self.gen_token(TokenId::Lt)
+						}
+					}
 				},
 				'>' => {
 					self.advance();
 
-					self.gen_token(TokenId::Gt)
+					match self.chr_maybe {
+						None => self.gen_token(TokenId::Gt),
+						Some(chr) => if chr == '>' {
+							self.advance();
+
+							self.gen_token(TokenId::Sr)
+						} else {
+							self.gen_token(TokenId::Gt)
+						}
+					}
 				},
 				'?' => {
 					self.advance();

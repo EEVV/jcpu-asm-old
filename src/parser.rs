@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use token::{TokenId, Token};
 use lexer::Lexer;
 use error::{ErrorId, Error, gen_error};
@@ -14,66 +16,10 @@ impl Parser {
 		self.token_result = self.lexer.token();
 	}
 
-	fn parse_atom(&mut self) -> Result<Node, Error> {
+	fn parse_paren(&mut self) -> Result<Node, Error> {
 		match self.token_result.clone() {
 			Err(err) => Err(err),
 			Ok(token) => match token.id {
-				TokenId::Num(num) => {
-					let node = Node::Num(num);
-
-					self.advance();
-
-					Ok(node)
-				},
-				TokenId::Iden(iden) => {
-					let node = Node::Iden(iden.clone());
-
-					self.advance();
-
-					Ok(node)
-				},
-				TokenId::Reg(reg) => {
-					let node = Node::Reg(reg);
-
-					self.advance();
-
-					Ok(node)
-				},
-				TokenId::Empty => {
-					self.advance();
-
-					Ok(Node::Empty)
-				},
-				TokenId::Not => {
-					self.advance();
-
-					let node_result = self.parse_atom();
-
-					match node_result {
-						Err(_) => node_result,
-						Ok(node) => Ok(Node::Not(Box::new(node)))
-					}
-				},
-				TokenId::Sub => {
-					self.advance();
-
-					let node_result = self.parse_atom();
-
-					match node_result {
-						Err(_) => node_result,
-						Ok(node) => Ok(Node::Neg(Box::new(node)))
-					}
-				},
-				TokenId::Div => {
-					self.advance();
-
-					let node_result = self.parse_atom();
-
-					match node_result {
-						Err(_) => node_result,
-						Ok(node) => Ok(Node::Rep(Box::new(node)))
-					}
-				},
 				TokenId::ParenL => {
 					self.advance();
 
@@ -94,27 +40,103 @@ impl Parser {
 						}
 					}
 				},
-				TokenId::SquareL => {
+				_ => gen_error(ErrorId::ExpectedAtom, token.clone())
+			}
+		}
+	}
+
+	fn parse_atom(&mut self) -> Result<Node, Error> {
+		match self.token_result.clone() {
+			Err(err) => Err(err),
+			Ok(token) => match token.id {
+				// parse a number
+				TokenId::Num(num) => {
+					let node = Node::Num(num as i32);
+
 					self.advance();
 
-					let node_result = self.parse_opers();
+					Ok(node)
+				},
+				// parse identifier
+				TokenId::Iden(iden) => {
+					let node = Node::Iden(iden.clone());
+
+					self.advance();
+
+					Ok(node)
+				},
+				// parse register
+				TokenId::Reg(reg) => {
+					let node = Node::Reg(reg);
+
+					self.advance();
+
+					Ok(node)
+				},
+				// parse `_`
+				TokenId::Empty => {
+					self.advance();
+
+					Ok(Node::Empty)
+				},
+				// parse !x
+				TokenId::Not => {
+					self.advance();
+
+					let node_result = self.parse_atom();
 
 					match node_result {
 						Err(_) => node_result,
-						Ok(node) => match self.token_result.clone() {
-							Err(err) => Err(err),
-							Ok(token) => match token.id {
-								TokenId::SquareR => {
-									self.advance();
-
-									Ok(Node::Mem(Box::new(node)))
-								},
-								_ => gen_error(ErrorId::ExpectedSquare, token.clone())
-							}
-						}
+						Ok(node) => Ok(Node::Not(Box::new(node)))
 					}
 				},
-				_ => gen_error(ErrorId::ExpectedAtom, token.clone())
+				// parse -x
+				TokenId::Sub => {
+					self.advance();
+
+					let node_result = self.parse_atom();
+
+					match node_result {
+						Err(_) => node_result,
+						Ok(node) => Ok(Node::Neg(Box::new(node)))
+					}
+				},
+				// parse /x
+				TokenId::Div => {
+					self.advance();
+
+					let node_result = self.parse_atom();
+
+					match node_result {
+						Err(_) => node_result,
+						Ok(node) => Ok(Node::Rep(Box::new(node)))
+					}
+				},
+				TokenId::Mem8 => {
+					self.advance();
+
+					match self.parse_paren() {
+						Err(err) => Err(err),
+						Ok(node) => Ok(Node::Mem8(Box::new(node)))
+					}
+				},
+				TokenId::Mem16 => {
+					self.advance();
+
+					match self.parse_paren() {
+						Err(err) => Err(err),
+						Ok(node) => Ok(Node::Mem16(Box::new(node)))
+					}
+				},
+				TokenId::Mem32 => {
+					self.advance();
+
+					match self.parse_paren() {
+						Err(err) => Err(err),
+						Ok(node) => Ok(Node::Mem32(Box::new(node)))
+					}
+				},
+				_ => self.parse_paren()
 			}
 		}
 	}
@@ -173,6 +195,24 @@ impl Parser {
 								Ok(right) => node = Node::Sub(Box::new(node), Box::new(right))
 							}
 						},
+						TokenId::Sl => {
+							self.advance();
+
+							let right_result = self.parse_atom();
+							match right_result {
+								Err(_) => return right_result,
+								Ok(right) => node = Node::Sl(Box::new(node), Box::new(right))
+							}
+						},
+						TokenId::Sr => {
+							self.advance();
+
+							let right_result = self.parse_atom();
+							match right_result {
+								Err(_) => return right_result,
+								Ok(right) => node = Node::Sr(Box::new(node), Box::new(right))
+							}
+						},
 						TokenId::Mul => {
 							self.advance();
 
@@ -225,11 +265,13 @@ impl Parser {
 		}
 	}
 
+	// parse operands
+	// x, y, z, ..., w
 	fn parse_opers(&mut self) -> Result<Node, Error> {
 		let node_result = self.parse_oper();
 
 		match node_result {
-			Err(_) => node_result,
+			Err(err) => Err(err),
 			Ok(node) => match self.token_result.clone() {
 				Err(err) => Err(err),
 				Ok(token) => match token.id {
@@ -237,10 +279,11 @@ impl Parser {
 						self.advance();
 
 						let mut nodes = vec![node];
+
 						let node_result = self.parse_oper();
 
 						match node_result {
-							Err(_) => node_result,
+							Err(err) => Err(err),
 							Ok(node) => {
 								nodes.push(node);
 
@@ -254,7 +297,7 @@ impl Parser {
 												let node_result = self.parse_oper();
 
 												match node_result {
-													Err(_) => return node_result,
+													Err(err) => return Err(err),
 													Ok(node) => nodes.push(node)
 												}
 											},
@@ -362,7 +405,11 @@ impl Parser {
 		}
 
 		Ok(Program {
-			nodes: nodes
+			nodes: nodes,
+			binary: Vec::new(),
+			labels: HashMap::new(),
+			queue: HashMap::new(),
+			addr: 0
 		})
 	}
 }

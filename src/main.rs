@@ -8,6 +8,9 @@ mod node;
 mod parser;
 mod cpu;
 
+use lexer::Lexer;
+use token::TokenId;
+
 use parser::parse;
 
 use std::env;
@@ -24,6 +27,7 @@ fn main() {
 		None => println!("usage: jcpu-asm [PATH TO FILE]"),
 		Some(x) => {
 			let file_maybe = File::open(x);
+			
 			match file_maybe {
 				Err(_) => println!("invalid file"),
 				Ok(mut file) => {
@@ -38,14 +42,14 @@ fn main() {
 
 							match program_result {
 								Err(_) => (),
-								Ok(program) => {
+								Ok(mut program) => {
 									let program_gen_result = program.gen();
 
 									println!("{:?}", program_gen_result);
 
 									match program_gen_result {
-										Err(_) => (),
-										Ok(raw_insts) => for inst in raw_insts {
+										None => (),
+										Some(raw_insts) => for inst in raw_insts {
 											println!("{:032b}", inst);
 										}
 									}
