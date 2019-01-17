@@ -1,17 +1,17 @@
 # r0 := input
-# r1 := return address
-# r2 := fibs(r0 + 1)
-# r3 := fibs(r0)
-# r4 := 1
+# r1 := fibs(r0 + 1)
+# r2 := fibs(r0)
+# r3 := 1
 
+	r0 -> 5
 fibs
-	r2 -> 1
-	r3 -> 0
-	r4 -> 1
+	r1 -> 1
+	r2 -> 0
+	r3 -> 1
 fibs_loop
-	r2 -> r2 + r3
-	r3 -> r2 - r3
-	r0 -> r0 - r4
+	r1 -> r1 + r2
+	r2 -> r1 - r2
+	r0 -> r0 - r3
 	r15 -> fibs_loop ? !(r0 = 0)
-	r15 -> r1
+	28
 

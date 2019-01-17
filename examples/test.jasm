@@ -1,1 +1,8 @@
-	r0 -> -1
+fibs
+	r2 -> 1
+	r3 -> 0
+	r4 -> 1
+fibs_loop
+	r2 -> r2 + r3
+	r3 -> r2 - r3
+	r0 -> r0 - r4

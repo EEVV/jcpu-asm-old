@@ -21,10 +21,9 @@ use cpu::{Opcode, Inst};
 
 use node::Node;
 
-
 fn main() {
 	match env::args().nth(1) {
-		None => println!("usage: jcpu-asm [PATH TO FILE]"),
+		None => println!("usage: jcpu-asm [PATH TO INPUT] [PATH TO OUTPUT]"),
 		Some(x) => {
 			let file_maybe = File::open(x);
 			
@@ -49,8 +48,27 @@ fn main() {
 
 									match program_gen_result {
 										None => (),
-										Some(raw_insts) => for inst in raw_insts {
-											println!("{:032b}", inst);
+										Some(raw_insts) => match env::args().nth(2) {
+											None => println!("usage: jcpu-asm [PATH TO INPUT] [PATH TO OUTPUT]"),
+											Some(x) => {
+												let file_maybe = File::create(x);
+
+												match file_maybe {
+													Err(_) => println!("failed to create output file"),
+													Ok(mut file) => {
+														for inst in raw_insts {
+															println!("{:032b}", inst);
+
+															file.write(&[
+																inst as u8,
+																(inst >> 8) as u8,
+																(inst >> 16) as u8,
+																(inst >> 24) as u8
+															]);
+														}
+													}
+												}
+											}
 										}
 									}
 								}

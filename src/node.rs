@@ -449,14 +449,13 @@ impl Node {
 	}
 
 	fn gen(self, program: &mut Program) -> bool {
-		let mut inst = Inst::new();
-
 		match self {
-			// gen direct data
+			// immediate number
 			Node::Num(num) => {
 				program.binary.push(num as u32);
 				program.addr += 1;
 			},
+			// immediate iden
 			Node::Iden(iden) => {
 				let iden_u32 = program.get_iden(iden, 0);
 				program.binary.push(iden_u32);
@@ -485,6 +484,8 @@ impl Node {
 			},
 
 			Node::Cond(box node, box cond) => {
+				let mut inst = Inst::new();
+
 				match cond {
 					Node::Not(box node) => match node {
 						Node::Eql(box left, box right) => match left {
@@ -510,18 +511,24 @@ impl Node {
 				}
 
 				node.gen_uncond(program, &mut inst);
+
+				let mut inst_raw = inst.gen();
+				program.addr += inst_raw.len();
+				program.binary.append(&mut inst_raw);
+
 			},
 			_ => {
+				let mut inst = Inst::new();
+
 				if !self.gen_uncond(program, &mut inst) {
 					return false
 				}
+
+				let mut inst_raw = inst.gen();
+				program.addr += inst_raw.len();
+				program.binary.append(&mut inst_raw);
 			}
 		}
-
-		let mut inst_raw = inst.gen();
-		program.addr += inst_raw.len();
-		program.binary.append(&mut inst_raw);
-
 		true
 	}
 }
